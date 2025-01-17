@@ -33,7 +33,6 @@ void USNS_DialogueWorldSubsystem::Initialize(FSubsystemCollectionBase& Collectio
 		{
 			return;
 		}
-		bTESTVARIABLEREMOVEME = false;
 		InGameManager = GetWorld()->SpawnActor<ASNS_Manager>();
 	}
 }
@@ -76,11 +75,15 @@ void USNS_DialogueWorldSubsystem::Tick(float DeltaTime)
 			}
 
 
-			if (bShouldAdjustAudioTiming && InGameManager->AudioComponent->Sound != nullptr)
+			if (bShouldAdjustAudioTiming)
 			{
 				bShouldAdjustAudioTiming = false;
 				DialogueLineElapsedTime = CurrentDialogue->TimeStamps[CurrentDialogueLineIndex-1].TimeStamp; // -1 because the time elapsed is the duration time of the previous dialogue line
-				InGameManager->AudioComponent->Play(DialogueLineElapsedTime);
+				
+				if (InGameManager->AudioComponent->Sound != nullptr)
+				{
+					InGameManager->AudioComponent->Play(DialogueLineElapsedTime);
+				}
 			}
 
 			SendDialogueToWidget();
@@ -157,11 +160,13 @@ void USNS_DialogueWorldSubsystem::PlayDialogue(bool& AllLinesEnded)
 	CurrentDialogueRowName = DialoguesToPlay[0].DialogueRowName;
 	FSNS_S_Dialogue* TempDialogue = DialoguesToPlay[0].DialoguesDataTable->FindRow<FSNS_S_Dialogue>(CurrentDialogueRowName, "", false);
 
+#if WITH_EDITOR
 	if (!TempDialogue)
 	{
 		FMessageLog("PIE").Error(FText::Format(LOCTEXT("NotFoundRow", "Dialogue row name '{0}' cannot be found!"), FText::FromName(DialoguesToPlay[0].DialogueRowName)));
 		return;
 	}
+#endif
 
 	CurrentDialogue = TempDialogue;
 
@@ -245,12 +250,16 @@ void USNS_DialogueWorldSubsystem::ManageDialogueEnd(bool bShouldRemoveFirst)
 
 void USNS_DialogueWorldSubsystem::SendDialogueToWidget()
 {
-	if (bTESTVARIABLEREMOVEME)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("DEVI CHIAMARE PRIMA IL BEGIN PLAY?"));
-	}
-
 	const FName& SpeakerRowName = CurrentDialogue->TimeStamps[CurrentDialogueLineIndex].Speaker.RowName;
+
+#if WITH_EDITOR
+	if (CurrentDialogue->TimeStamps[CurrentDialogueLineIndex].Speaker.DataTable == nullptr)
+	{
+		FMessageLog("PIE").Error(FText::Format(LOCTEXT("SpeakerDataTableNotFound", "Speaker's data table of '{0}' cannot be found inside '{1}' dialogue!"), FText::FromName(SpeakerRowName), FText::FromName(CurrentDialogueRowName) ));
+		return;
+	}
+#endif
+
 
 	FSNS_S_Speaker* Speaker = CurrentDialogue->TimeStamps[CurrentDialogueLineIndex].Speaker.DataTable->FindRow<FSNS_S_Speaker>(SpeakerRowName, "", true);
 
@@ -269,7 +278,8 @@ void USNS_DialogueWorldSubsystem::SendDialogueToWidget()
 		InGameManager->SubtitlesWidget->OnReceivedDialogue(*Speaker, CurrentDialogue->TimeStamps[CurrentDialogueLineIndex], CurrentDialogue->bCanBeSkipped);
 	}
 	else {
-		UE_LOG(LogTemp,Error,TEXT("Subtitle Widget cannot be found! Please contact the developer"))
+		FMessageLog("PIE").Error(LOCTEXT("NoSubtitleWidget", "Subtitle Widget cannot be found! Please contact the developer!"));
+		return;
 	}
 }
 
@@ -282,7 +292,7 @@ void USNS_DialogueWorldSubsystem::SkipCurrentLine()
 
 	DialogueLineRemaningTime = 0;
 
-	if (InGameManager->AudioComponent->Sound != nullptr && DialogueLineElapsedTime < InGameManager->AudioComponent->Sound->GetDuration())
+	if (InGameManager->AudioComponent->Sound == nullptr || DialogueLineElapsedTime < InGameManager->AudioComponent->Sound->GetDuration() )
 	{
 		bShouldAdjustAudioTiming = true;
 	}
